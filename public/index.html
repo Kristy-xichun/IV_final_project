@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inside London's Airbnb Market</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg: #0c0f14;
+  --card: #161a22;
+  --card-hover: #1c2029;
+  --border: #2a2e38;
+  --text: #e4e6eb;
+  --text-dim: #8b8f9a;
+  --accent: #ff5a5f;
+  --accent2: #00a699;
+  --accent3: #fc642d;
+  --gold: #ffb400;
+  --muted: rgba(255,255,255,0.08);
+  --highlight-glow: rgba(255,90,95,0.25);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; }
+
+/* ── Hero ── */
+.hero { padding:50px 40px 20px; max-width:1440px; margin:0 auto; }
+.hero h1 { font-family:'DM Serif Display',serif; font-size:3rem; letter-spacing:-1px; line-height:1.15; margin-bottom:10px; }
+.hero h1 span { color:var(--accent); }
+.hero .sub { font-size:1rem; color:var(--text-dim); font-weight:300; max-width:760px; line-height:1.6; }
+.hero .sub strong { color:var(--text); font-weight:600; }
+
+/* ── Global Filter Bar ── */
+.filter-bar {
+  max-width:1440px; margin:0 auto; padding:16px 40px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.filter-bar label { font-size:.82rem; color:var(--text-dim); font-weight:500; text-transform:uppercase; letter-spacing:.8px; }
+.filter-pills { display:flex; gap:6px; }
+.pill {
+  padding:7px 16px; border-radius:20px; font-size:.78rem; font-weight:600; cursor:pointer;
+  border:1.5px solid var(--border); background:transparent; color:var(--text-dim);
+  transition:all .2s;
+}
+.pill.active { border-color:var(--accent); background:rgba(255,90,95,.15); color:var(--accent); }
+.pill:hover:not(.active) { border-color:var(--text-dim); color:var(--text); }
+.filter-divider { width:1px; height:28px; background:var(--border); margin:0 8px; }
+.reset-btn {
+  padding:7px 16px; border-radius:20px; font-size:.78rem; font-weight:600; cursor:pointer;
+  border:1.5px solid var(--accent2); background:rgba(0,166,153,.1); color:var(--accent2);
+  transition:all .2s; margin-left:auto;
+}
+.reset-btn:hover { background:rgba(0,166,153,.25); }
+
+/* ── Selection indicator ── */
+.selection-banner {
+  max-width:1440px; margin:0 auto; padding:0 40px;
+  opacity:0; height:0; overflow:hidden; transition:all .3s ease;
+}
+.selection-banner.visible { opacity:1; height:auto; padding-bottom:12px; }
+.selection-inner {
+  display:flex; align-items:center; gap:12px; padding:10px 18px;
+  background:rgba(255,90,95,.08); border:1px solid rgba(255,90,95,.2); border-radius:10px;
+}
+.selection-inner .sel-text { font-size:.82rem; color:var(--text); flex:1; }
+.selection-inner .sel-text strong { color:var(--accent); }
+.sel-clear {
+  padding:4px 12px; border-radius:14px; font-size:.72rem; font-weight:600;
+  border:1px solid rgba(255,90,95,.3); background:transparent; color:var(--accent);
+  cursor:pointer; transition:all .2s;
+}
+.sel-clear:hover { background:rgba(255,90,95,.15); }
+
+/* ── Layout ── */
+.main { max-width:1440px; margin:0 auto; padding:0 40px 60px; display:flex; flex-direction:column; gap:28px; }
+.row { display:grid; gap:20px; }
+.row-2 { grid-template-columns:1fr 1fr; }
+.row-bar-scatter { grid-template-columns:1fr 1fr; }
+
+/* ── Cards ── */
+.card {
+  background:var(--card); border:1px solid var(--border); border-radius:14px; padding:28px;
+  position:relative; overflow:hidden;
+}
+.card-title { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; gap:12px; }
+.insight {
+  background:rgba(255,90,95,.08); border:1px solid rgba(255,90,95,.2); border-radius:10px;
+  padding:12px 16px; font-size:.82rem; color:var(--text); line-height:1.55; max-width:320px; flex-shrink:0;
+}
+.insight strong { color:var(--accent); font-weight:700; }
+.insight-icon { color:var(--accent); margin-right:5px; }
+.card-num { font-family:'DM Serif Display',serif; font-size:.82rem; color:var(--accent); margin-bottom:4px; }
+.card h2 { font-family:'DM Serif Display',serif; font-size:1.35rem; font-weight:400; }
+.card .card-stat { font-size:.78rem; color:var(--text-dim); text-align:right; line-height:1.5; }
+.card .card-stat strong { color:var(--text); font-weight:600; }
+
+/* ── Bubble Map ── */
+#mapContainer { width:100%; height:480px; position:relative; }
+#leafletMap { width:100%; height:100%; border-radius:8px; z-index:1; }
+.map-tooltip {
+  position:absolute; background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:12px 16px; font-size:.78rem; pointer-events:none; display:none; z-index:1000;
+  box-shadow:0 8px 28px rgba(0,0,0,.5); min-width:180px;
+}
+.bubble-label {
+  background:transparent !important; border:none !important; box-shadow:none !important;
+  color:#e4e6eb !important; font-family:'DM Sans',sans-serif !important;
+  font-size:10px !important; font-weight:500 !important;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.6) !important;
+}
+.leaflet-interactive { cursor:pointer !important; }
+.leaflet-container { background: var(--bg) !important; }
+.london-label {
+  color: var(--accent) !important; font-family:'DM Sans',sans-serif !important;
+  font-size: 11px !important; font-weight: 500 !important; letter-spacing: 2px;
+  text-transform: uppercase; opacity: 0.4; text-align: center;
+  background: transparent !important; border: none !important;
+}
+.map-tooltip .tt-name { font-weight:700; font-size:.88rem; margin-bottom:6px; }
+.map-tooltip .tt-row { display:flex; justify-content:space-between; gap:16px; color:var(--text-dim); }
+.map-tooltip .tt-val { color:var(--text); font-weight:600; }
+
+/* ── Bar Chart ── */
+.bar-chart { display:flex; flex-direction:column; gap:5px; }
+.bar-row {
+  display:grid; grid-template-columns:140px 1fr 54px; align-items:center; gap:10px;
+  padding:3px 6px; border-radius:6px; cursor:pointer; transition:background .15s;
+}
+.bar-row:hover { background:rgba(255,255,255,.04); }
+.bar-row.selected { background:rgba(255,90,95,.15); box-shadow:inset 3px 0 0 var(--accent); }
+.bar-row.dimmed { opacity:.25; }
+.bar-row.dimmed:hover { opacity:.45; }
+.bar-name { font-size:.76rem; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.bar-track { height:22px; background:rgba(255,255,255,.03); border-radius:4px; overflow:hidden; position:relative; }
+.bar-fill-entire { height:100%; position:absolute; left:0; top:0; border-radius:4px 0 0 4px; transition:width .6s cubic-bezier(.22,1,.36,1); }
+.bar-fill-private { height:100%; position:absolute; top:0; transition:width .6s, left .6s; }
+.bar-fill-shared { height:100%; position:absolute; top:0; border-radius:0 4px 4px 0; transition:width .6s, left .6s; }
+.bar-val { font-size:.74rem; color:var(--text-dim); font-weight:500; }
+
+/* ── Scatter ── */
+.scatter-wrap { position:relative; width:100%; height:440px; }
+#scatterCanvas { width:100%; height:100%; cursor:crosshair; }
+.scatter-tooltip {
+  position:absolute; background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:12px 16px; font-size:.78rem; pointer-events:none; display:none; z-index:20;
+  box-shadow:0 8px 28px rgba(0,0,0,.5); min-width:190px;
+}
+.scatter-tooltip .tt-name { font-weight:700; font-size:.88rem; margin-bottom:6px; }
+.scatter-tooltip .tt-row { display:flex; justify-content:space-between; gap:16px; color:var(--text-dim); }
+.scatter-tooltip .tt-val { color:var(--text); font-weight:600; }
+.scatter-axis-label { font-size:.72rem; color:var(--text-dim); }
+.brush-rect {
+  position:absolute; border:1.5px dashed var(--accent); background:rgba(255,90,95,.08);
+  pointer-events:none; display:none;
+}
+
+/* ── Legend ── */
+.legend { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+.legend-item { display:flex; align-items:center; gap:5px; font-size:.74rem; color:var(--text-dim); }
+.legend-dot { width:9px; height:9px; border-radius:50%; }
+
+/* ── Stats strip ── */
+.stats-strip { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+.mini-stat {
+  background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px;
+  text-align:center; transition:border-color .2s;
+}
+.mini-stat.highlight { border-color:var(--accent); }
+.mini-stat .ms-val { font-family:'DM Serif Display',serif; font-size:1.5rem; margin:4px 0 2px; }
+.mini-stat .ms-label { font-size:.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px; }
+
+/* ── Interaction hint ── */
+.hint { font-size:.72rem; color:var(--text-dim); font-style:italic; margin-top:8px; }
+
+@media(max-width:1000px){
+  .hero { padding:28px 20px 16px; }
+  .hero h1 { font-size:2rem; }
+  .filter-bar { padding:12px 20px; }
+  .main { padding:0 20px 40px; }
+  .row-2, .row-bar-scatter { grid-template-columns:1fr; }
+  .stats-strip { grid-template-columns:repeat(3,1fr); }
+  #mapContainer { height:360px; }
+  .scatter-wrap { height:360px; }
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Inside <span>London's</span> Airbnb</h1>
+  <p class="sub">Explore <strong>10,154 active listings</strong> across 29 boroughs. Click boroughs on the map or bars in the chart to cross-highlight everywhere. Brush the scatter plot to select multiple boroughs. Use the host-type filter to see how the market changes.</p>
+</div>
+
+<!-- Global Filter -->
+<div class="filter-bar">
+  <label>Host Type Filter</label>
+  <div class="filter-pills" id="hostFilter">
+    <div class="pill active" data-ht="all">All Hosts</div>
+    <div class="pill" data-ht="individual">Individual (1)</div>
+    <div class="pill" data-ht="small">Small (2-5)</div>
+    <div class="pill" data-ht="medium">Medium (6-20)</div>
+    <div class="pill" data-ht="professional">Pro (20+)</div>
+  </div>
+  <div class="filter-divider"></div>
+  <button class="reset-btn" id="resetAll">Reset All</button>
+</div>
+
+<!-- Selection Banner -->
+<div class="selection-banner" id="selBanner">
+  <div class="selection-inner">
+    <span class="sel-text" id="selText"></span>
+    <button class="sel-clear" id="selClear">Clear Selection</button>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="main">
+  <div class="stats-strip" id="statsStrip">
+    <div class="mini-stat"><div class="ms-label">Listings</div><div class="ms-val" id="st-count">10,154</div></div>
+    <div class="mini-stat"><div class="ms-label">Median Price</div><div class="ms-val" id="st-price">£122</div></div>
+    <div class="mini-stat"><div class="ms-label">Entire Home %</div><div class="ms-val" id="st-entire">68.3%</div></div>
+    <div class="mini-stat"><div class="ms-label">Avg Host Listings</div><div class="ms-val" id="st-hlc">14.4</div></div>
+    <div class="mini-stat"><div class="ms-label">Boroughs</div><div class="ms-val" id="st-boroughs">29</div></div>
+  </div>
+
+  <!-- Map -->
+  <div class="card">
+    <div class="card-title">
+      <div><div class="card-num">01</div><h2>Geographic Distribution</h2></div>
+      <div class="insight"><span class="insight-icon">▸</span>Westminster alone holds <strong>16.8%</strong> of all London Airbnb listings — more than the bottom 15 boroughs combined. Bubble size = listing count, colour intensity = median price (cool→warm).</div>
+    </div>
+    <div id="mapContainer">
+      <div id="leafletMap"></div>
+      <div class="map-tooltip" id="mapTooltip"></div>
+    </div>
+    <p class="hint">Click a borough bubble to select it. Click again or press Esc to deselect.</p>
+  </div>
+
+  <!-- Bar Chart + Scatter -->
+  <div class="row row-bar-scatter">
+    <div class="card">
+      <div class="card-title">
+        <div><div class="card-num">02</div><h2>Room Type Composition</h2></div>
+        <div class="insight"><span class="insight-icon">▸</span>Kensington &amp; Chelsea is <strong>89% entire homes</strong> — London's most "hotel-like" Airbnb market. Hounslow is the most balanced at nearly 50/50.</div>
+      </div>
+      <div id="barChart" class="bar-chart"></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Entire Home</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Private Room</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--gold)"></div>Shared Room</div>
+      </div>
+      <p class="hint">Click a bar to select that borough across all views.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div><div class="card-num">03</div><h2>Price vs Commercialisation</h2></div>
+        <div class="insight"><span class="insight-icon">▸</span>A clear corridor: as average host portfolio size increases, median prices climb. <strong>Kensington, Westminster, Camden</strong> sit at the extreme commercial end.</div>
+      </div>
+      <div class="scatter-wrap">
+        <canvas id="scatterCanvas"></canvas>
+        <div class="scatter-tooltip" id="scatterTooltip"></div>
+        <div class="brush-rect" id="brushRect"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;">
+        <span class="scatter-axis-label">← Individual hosts</span>
+        <span class="scatter-axis-label">Professional hosts →</span>
+      </div>
+      <p class="hint">Click a point or drag to brush-select multiple boroughs.</p>
+    </div>
+  </div>
+
+  <!-- NEW: Price Histogram -->
+  <div class="card">
+    <div class="card-title">
+      <div><div class="card-num">04</div><h2>Price Distribution by Room Type</h2></div>
+      <div class="insight"><span class="insight-icon">▸</span>Two completely separate markets: private rooms peak at <strong>£50–75</strong>, entire homes at <strong>£150–200</strong>. The overlap zone (£75–125) is where budget entire homes compete with premium private rooms.</div>
+    </div>
+    <div style="position:relative;width:100%;height:340px;">
+      <canvas id="histCanvas" style="width:100%;height:100%"></canvas>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Entire Home/Apt</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Private Room</div>
+    </div>
+  </div>
+
+  <!-- NEW: Individual vs Pro Price Gap -->
+  <div class="card">
+    <div class="card-title">
+      <div><div class="card-num">05</div><h2>The Professional Premium: Who Charges More?</h2></div>
+      <div class="insight"><span class="insight-icon">▸</span>In Hounslow, professional hosts charge <strong>129% more</strong> than individuals. But in Brent and Harrow, pros actually charge <strong>less</strong> — competing on volume, not price.</div>
+    </div>
+    <div id="gapChart" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <div class="legend" style="margin-top:14px;">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Pro charges MORE than individual</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Pro charges LESS than individual</div>
+    </div>
+  </div>
+
+  <!-- NEW: Price vs Demand Scatter -->
+  <div class="card">
+    <div class="card-title">
+      <div><div class="card-num">06</div><h2>Does Higher Price Mean Less Demand?</h2></div>
+      <div class="insight"><span class="insight-icon">▸</span>Surprisingly, <strong>no strong penalty</strong> for high prices. Westminster (£182) gets nearly as many bookings as budget Croydon (£73). Location trumps price in London.</div>
+    </div>
+    <div style="position:relative;width:100%;height:400px;">
+      <canvas id="demandCanvas" style="width:100%;height:100%;cursor:crosshair"></canvas>
+      <div class="scatter-tooltip" id="demandTooltip"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;">
+      <span class="scatter-axis-label">← Lower price</span>
+      <span class="scatter-axis-label">Higher price →</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════
+const DATA_ALL = [{"neighbourhood":"Westminster","count":1706,"median_price":182,"avg_price":231,"pct_entire":82.9,"pct_private":16.5,"pct_shared":0.6,"avg_hlc":21.7,"lat":51.5137,"lng":-0.161},{"neighbourhood":"Camden","count":847,"median_price":137,"avg_price":164,"pct_entire":69.5,"pct_private":29.2,"pct_shared":1.3,"avg_hlc":22.4,"lat":51.5351,"lng":-0.1433},{"neighbourhood":"Kensington and Chelsea","count":845,"median_price":190,"avg_price":234,"pct_entire":89.3,"pct_private":10.2,"pct_shared":0.5,"avg_hlc":25.1,"lat":51.4997,"lng":-0.1899},{"neighbourhood":"Tower Hamlets","count":654,"median_price":120,"avg_price":174,"pct_entire":67.1,"pct_private":32.3,"pct_shared":0.6,"avg_hlc":14.8,"lat":51.517,"lng":-0.0482},{"neighbourhood":"Lambeth","count":584,"median_price":104,"avg_price":128,"pct_entire":56.3,"pct_private":43.5,"pct_shared":0.2,"avg_hlc":13.8,"lat":51.4717,"lng":-0.1196},{"neighbourhood":"Southwark","count":582,"median_price":104,"avg_price":128,"pct_entire":56.7,"pct_private":42.8,"pct_shared":0.3,"avg_hlc":10.1,"lat":51.4902,"lng":-0.082},{"neighbourhood":"Islington","count":509,"median_price":127,"avg_price":149,"pct_entire":71.7,"pct_private":28.3,"pct_shared":0.0,"avg_hlc":16.3,"lat":51.541,"lng":-0.1086},{"neighbourhood":"Wandsworth","count":472,"median_price":113,"avg_price":158,"pct_entire":59.3,"pct_private":40.3,"pct_shared":0.4,"avg_hlc":11.7,"lat":51.4595,"lng":-0.1733},{"neighbourhood":"Hammersmith and Fulham","count":470,"median_price":128,"avg_price":159,"pct_entire":71.9,"pct_private":27.2,"pct_shared":0.9,"avg_hlc":11.6,"lat":51.4918,"lng":-0.2151},{"neighbourhood":"Hackney","count":453,"median_price":115,"avg_price":138,"pct_entire":70.9,"pct_private":29.1,"pct_shared":0.0,"avg_hlc":10.1,"lat":51.5447,"lng":-0.0712},{"neighbourhood":"Brent","count":407,"median_price":97,"avg_price":128,"pct_entire":55.3,"pct_private":43.7,"pct_shared":1.0,"avg_hlc":10.4,"lat":51.5499,"lng":-0.2512},{"neighbourhood":"Ealing","count":251,"median_price":84,"avg_price":101,"pct_entire":58.2,"pct_private":41.0,"pct_shared":0.8,"avg_hlc":7.3,"lat":51.5166,"lng":-0.2977},{"neighbourhood":"Haringey","count":232,"median_price":86,"avg_price":101,"pct_entire":56.5,"pct_private":43.5,"pct_shared":0.0,"avg_hlc":8.9,"lat":51.5865,"lng":-0.1052},{"neighbourhood":"Barnet","count":223,"median_price":101,"avg_price":109,"pct_entire":70.9,"pct_private":29.1,"pct_shared":0.0,"avg_hlc":13.8,"lat":51.5939,"lng":-0.2092},{"neighbourhood":"Newham","count":222,"median_price":113,"avg_price":164,"pct_entire":62.6,"pct_private":36.9,"pct_shared":0.5,"avg_hlc":7.4,"lat":51.5239,"lng":0.0202},{"neighbourhood":"Greenwich","count":184,"median_price":106,"avg_price":116,"pct_entire":61.4,"pct_private":38.6,"pct_shared":0.0,"avg_hlc":4.4,"lat":51.4835,"lng":0.0373},{"neighbourhood":"Lewisham","count":173,"median_price":81,"avg_price":94,"pct_entire":56.6,"pct_private":42.8,"pct_shared":0.6,"avg_hlc":3.3,"lat":51.4588,"lng":-0.0269},{"neighbourhood":"Croydon","count":147,"median_price":73,"avg_price":86,"pct_entire":66.0,"pct_private":34.0,"pct_shared":0.0,"avg_hlc":6.3,"lat":51.3803,"lng":-0.0927},{"neighbourhood":"Richmond upon Thames","count":146,"median_price":104,"avg_price":120,"pct_entire":56.2,"pct_private":43.8,"pct_shared":0.0,"avg_hlc":2.7,"lat":51.4529,"lng":-0.309},{"neighbourhood":"Waltham Forest","count":136,"median_price":83,"avg_price":93,"pct_entire":60.3,"pct_private":39.7,"pct_shared":0.0,"avg_hlc":7.3,"lat":51.5775,"lng":-0.0123},{"neighbourhood":"Hounslow","count":110,"median_price":75,"avg_price":140,"pct_entire":53.6,"pct_private":46.4,"pct_shared":0.0,"avg_hlc":7.6,"lat":51.4798,"lng":-0.3255},{"neighbourhood":"Merton","count":101,"median_price":85,"avg_price":97,"pct_entire":58.4,"pct_private":41.6,"pct_shared":0.0,"avg_hlc":5.4,"lat":51.4145,"lng":-0.1996},{"neighbourhood":"Harrow","count":98,"median_price":68,"avg_price":90,"pct_entire":55.1,"pct_private":44.9,"pct_shared":0.0,"avg_hlc":5.8,"lat":51.589,"lng":-0.3345},{"neighbourhood":"Hillingdon","count":86,"median_price":63,"avg_price":94,"pct_entire":43.0,"pct_private":57.0,"pct_shared":0.0,"avg_hlc":2.8,"lat":51.5307,"lng":-0.4429},{"neighbourhood":"Bromley","count":76,"median_price":83,"avg_price":87,"pct_entire":60.5,"pct_private":39.5,"pct_shared":0.0,"avg_hlc":4.8,"lat":51.4036,"lng":0.0042},{"neighbourhood":"Enfield","count":76,"median_price":67,"avg_price":89,"pct_entire":51.3,"pct_private":48.7,"pct_shared":0.0,"avg_hlc":5.2,"lat":51.6316,"lng":-0.0901},{"neighbourhood":"Redbridge","count":71,"median_price":65,"avg_price":90,"pct_entire":43.7,"pct_private":56.3,"pct_shared":0.0,"avg_hlc":9.6,"lat":51.5752,"lng":0.0614},{"neighbourhood":"Kingston upon Thames","count":68,"median_price":80,"avg_price":106,"pct_entire":64.7,"pct_private":35.3,"pct_shared":0.0,"avg_hlc":4.9,"lat":51.3996,"lng":-0.286},{"neighbourhood":"City of London","count":54,"median_price":178,"avg_price":198,"pct_entire":87.0,"pct_private":11.1,"pct_shared":1.9,"avg_hlc":13.1,"lat":51.5146,"lng":-0.0910}];
+
+const HT_DATA = {"Barnet":{"individual":{"count":75,"median_price":90,"pct_entire":66.7,"pct_private":33.3},"medium":{"count":51,"median_price":129,"pct_entire":90.2,"pct_private":9.8},"professional":{"count":27,"median_price":100,"pct_entire":92.6,"pct_private":7.4},"small":{"count":70,"median_price":84,"pct_entire":52.9,"pct_private":47.1}},"Brent":{"individual":{"count":163,"median_price":109,"pct_entire":54.0,"pct_private":46.0},"medium":{"count":51,"median_price":103,"pct_entire":70.6,"pct_private":29.4},"professional":{"count":70,"median_price":78,"pct_entire":80.0,"pct_private":20.0},"small":{"count":123,"median_price":73,"pct_entire":36.6,"pct_private":60.2}},"Bromley":{"individual":{"count":46,"median_price":83,"pct_entire":60.9,"pct_private":39.1},"medium":{"count":4,"median_price":143,"pct_entire":100.0,"pct_private":0.0},"professional":{"count":3,"median_price":109,"pct_entire":100.0,"pct_private":0.0},"small":{"count":23,"median_price":62,"pct_entire":47.8,"pct_private":52.2}},"Camden":{"individual":{"count":223,"median_price":138,"pct_entire":65.5,"pct_private":34.5},"medium":{"count":191,"median_price":142,"pct_entire":74.3,"pct_private":21.5},"professional":{"count":244,"median_price":135,"pct_entire":75.0,"pct_private":23.8},"small":{"count":189,"median_price":133,"pct_entire":62.4,"pct_private":37.6}},"City of London":{"individual":{"count":12,"median_price":162,"pct_entire":91.7,"pct_private":0.0},"medium":{"count":14,"median_price":199,"pct_entire":85.7,"pct_private":14.3},"professional":{"count":12,"median_price":170,"pct_entire":100.0,"pct_private":0.0},"small":{"count":16,"median_price":172,"pct_entire":75.0,"pct_private":25.0}},"Croydon":{"individual":{"count":69,"median_price":78,"pct_entire":63.8,"pct_private":36.2},"medium":{"count":18,"median_price":72,"pct_entire":72.2,"pct_private":27.8},"professional":{"count":10,"median_price":60,"pct_entire":80.0,"pct_private":20.0},"small":{"count":50,"median_price":63,"pct_entire":60.0,"pct_private":40.0}},"Ealing":{"individual":{"count":115,"median_price":88,"pct_entire":53.0,"pct_private":47.0},"medium":{"count":22,"median_price":98,"pct_entire":86.4,"pct_private":13.6},"professional":{"count":13,"median_price":50,"pct_entire":84.6,"pct_private":15.4},"small":{"count":101,"median_price":78,"pct_entire":52.5,"pct_private":46.5}},"Enfield":{"individual":{"count":42,"median_price":70,"pct_entire":42.9,"pct_private":57.1},"medium":{"count":7,"median_price":89,"pct_entire":71.4,"pct_private":28.6},"professional":{"count":2,"median_price":65,"pct_entire":50.0,"pct_private":50.0},"small":{"count":25,"median_price":58,"pct_entire":56.0,"pct_private":44.0}},"Greenwich":{"individual":{"count":113,"median_price":107,"pct_entire":55.8,"pct_private":44.2},"medium":{"count":8,"median_price":142,"pct_entire":75.0,"pct_private":25.0},"professional":{"count":2,"median_price":161,"pct_entire":100.0,"pct_private":0.0},"small":{"count":61,"median_price":95,"pct_entire":67.2,"pct_private":32.8}},"Hackney":{"individual":{"count":181,"median_price":117,"pct_entire":68.5,"pct_private":31.5},"medium":{"count":86,"median_price":107,"pct_entire":75.6,"pct_private":24.4},"professional":{"count":40,"median_price":120,"pct_entire":85.0,"pct_private":15.0},"small":{"count":146,"median_price":110,"pct_entire":66.4,"pct_private":33.6}},"Hammersmith and Fulham":{"individual":{"count":132,"median_price":114,"pct_entire":72.0,"pct_private":25.0},"medium":{"count":116,"median_price":149,"pct_entire":72.4,"pct_private":25.9},"professional":{"count":68,"median_price":130,"pct_entire":77.9,"pct_private":20.6},"small":{"count":154,"median_price":120,"pct_entire":68.2,"pct_private":31.8}},"Haringey":{"individual":{"count":96,"median_price":86,"pct_entire":53.1,"pct_private":46.9},"medium":{"count":37,"median_price":91,"pct_entire":78.4,"pct_private":21.6},"professional":{"count":14,"median_price":95,"pct_entire":78.6,"pct_private":21.4},"small":{"count":85,"median_price":79,"pct_entire":45.9,"pct_private":54.1}},"Harrow":{"individual":{"count":52,"median_price":67,"pct_entire":44.2,"pct_private":55.8},"medium":{"count":10,"median_price":55,"pct_entire":60.0,"pct_private":40.0},"professional":{"count":8,"median_price":68,"pct_entire":100.0,"pct_private":0.0},"small":{"count":28,"median_price":78,"pct_entire":57.1,"pct_private":42.9}},"Hillingdon":{"individual":{"count":47,"median_price":55,"pct_entire":38.3,"pct_private":61.7},"medium":{"count":5,"median_price":198,"pct_entire":40.0,"pct_private":60.0},"professional":{"count":1,"median_price":115,"pct_entire":100.0,"pct_private":0.0},"small":{"count":33,"median_price":60,"pct_entire":45.5,"pct_private":54.5}},"Hounslow":{"individual":{"count":43,"median_price":67,"pct_entire":39.5,"pct_private":60.5},"medium":{"count":16,"median_price":76,"pct_entire":68.8,"pct_private":31.2},"professional":{"count":13,"median_price":49,"pct_entire":84.6,"pct_private":15.4},"small":{"count":38,"median_price":83,"pct_entire":52.6,"pct_private":47.4}},"Islington":{"individual":{"count":152,"median_price":133,"pct_entire":71.7,"pct_private":28.3},"medium":{"count":105,"median_price":139,"pct_entire":76.2,"pct_private":23.8},"professional":{"count":84,"median_price":112,"pct_entire":82.1,"pct_private":17.9},"small":{"count":168,"median_price":115,"pct_entire":64.3,"pct_private":35.7}},"Kensington and Chelsea":{"individual":{"count":192,"median_price":195,"pct_entire":82.3,"pct_private":17.2},"medium":{"count":192,"median_price":199,"pct_entire":93.2,"pct_private":6.2},"professional":{"count":261,"median_price":189,"pct_entire":95.4,"pct_private":4.2},"small":{"count":200,"median_price":179,"pct_entire":83.5,"pct_private":16.0}},"Kingston upon Thames":{"individual":{"count":36,"median_price":85,"pct_entire":63.9,"pct_private":36.1},"medium":{"count":4,"median_price":59,"pct_entire":75.0,"pct_private":25.0},"professional":{"count":5,"median_price":75,"pct_entire":80.0,"pct_private":20.0},"small":{"count":23,"median_price":75,"pct_entire":60.9,"pct_primary":39.1}},"Lambeth":{"individual":{"count":218,"median_price":103,"pct_entire":50.0,"pct_private":50.0},"medium":{"count":103,"median_price":124,"pct_entire":66.0,"pct_private":34.0},"professional":{"count":73,"median_price":130,"pct_entire":79.5,"pct_private":20.5},"small":{"count":190,"median_price":88,"pct_entire":48.9,"pct_private":50.5}},"Lewisham":{"individual":{"count":108,"median_price":78,"pct_entire":51.9,"pct_private":47.2},"medium":{"count":5,"median_price":85,"pct_entire":80.0,"pct_private":20.0},"professional":{"count":3,"median_price":194,"pct_entire":66.7,"pct_private":33.3},"small":{"count":57,"median_price":80,"pct_entire":61.4,"pct_private":38.6}},"Merton":{"individual":{"count":44,"median_price":85,"pct_entire":52.3,"pct_private":47.7},"medium":{"count":18,"median_price":92,"pct_entire":72.2,"pct_private":27.8},"professional":{"count":3,"median_price":68,"pct_entire":66.7,"pct_private":33.3},"small":{"count":36,"median_price":80,"pct_entire":55.6,"pct_private":44.4}},"Newham":{"individual":{"count":96,"median_price":80,"pct_entire":47.9,"pct_private":50.0},"medium":{"count":36,"median_price":159,"pct_entire":75.0,"pct_private":25.0},"professional":{"count":9,"median_price":259,"pct_entire":88.9,"pct_private":11.1},"small":{"count":81,"median_price":129,"pct_entire":67.9,"pct_private":32.1}},"Redbridge":{"individual":{"count":23,"median_price":60,"pct_entire":34.8,"pct_private":65.2},"medium":{"count":17,"median_price":59,"pct_entire":47.1,"pct_private":52.9},"professional":{"count":10,"median_price":72,"pct_entire":50.0,"pct_private":50.0},"small":{"count":21,"median_price":73,"pct_entire":42.9,"pct_private":57.1}},"Richmond upon Thames":{"individual":{"count":90,"median_price":108,"pct_entire":55.6,"pct_private":44.4},"medium":{"count":3,"median_price":120,"pct_entire":33.3,"pct_private":66.7},"professional":{"count":2,"median_price":78,"pct_entire":50.0,"pct_private":50.0},"small":{"count":51,"median_price":95,"pct_entire":56.9,"pct_private":43.1}},"Southwark":{"individual":{"count":218,"median_price":105,"pct_entire":50.0,"pct_private":49.1},"medium":{"count":89,"median_price":130,"pct_entire":77.5,"pct_private":22.5},"professional":{"count":48,"median_price":111,"pct_entire":75.0,"pct_private":22.9},"small":{"count":227,"median_price":90,"pct_entire":49.3,"pct_private":50.7}},"Tower Hamlets":{"individual":{"count":201,"median_price":110,"pct_entire":57.7,"pct_private":41.8},"medium":{"count":121,"median_price":119,"pct_entire":72.7,"pct_private":27.3},"professional":{"count":71,"median_price":165,"pct_entire":90.1,"pct_private":9.9},"small":{"count":261,"median_price":120,"pct_entire":65.1,"pct_private":34.5}},"Waltham Forest":{"individual":{"count":50,"median_price":76,"pct_entire":54.0,"pct_private":46.0},"medium":{"count":26,"median_price":87,"pct_entire":65.4,"pct_private":34.6},"professional":{"count":10,"median_price":99,"pct_entire":70.0,"pct_private":30.0},"small":{"count":50,"median_price":84,"pct_entire":60.0,"pct_private":40.0}},"Wandsworth":{"individual":{"count":148,"median_price":103,"pct_entire":53.4,"pct_private":44.6},"medium":{"count":113,"median_price":130,"pct_entire":74.3,"pct_private":25.7},"professional":{"count":66,"median_price":120,"pct_entire":65.2,"pct_private":33.3},"small":{"count":145,"median_price":98,"pct_entire":50.3,"pct_private":49.7}},"Westminster":{"individual":{"count":292,"median_price":162,"pct_entire":78.1,"pct_private":21.9},"medium":{"count":516,"median_price":188,"pct_entire":86.6,"pct_private":12.0},"professional":{"count":506,"median_price":176,"pct_entire":85.8,"pct_private":13.6},"small":{"count":392,"median_price":189,"pct_entire":77.8,"pct_private":22.2}}};
+
+const BOROUGH_PATHS={"Westminster":[[-0.214,51.521],[-0.196,51.531],[-0.16,51.525],[-0.121,51.519],[-0.123,51.507],[-0.133,51.495],[-0.163,51.494],[-0.193,51.502],[-0.214,51.521]],"Camden":[[-0.196,51.531],[-0.171,51.557],[-0.143,51.564],[-0.112,51.555],[-0.107,51.542],[-0.121,51.519],[-0.16,51.525],[-0.196,51.531]],"Kensington and Chelsea":[[-0.214,51.521],[-0.193,51.502],[-0.163,51.494],[-0.155,51.482],[-0.173,51.478],[-0.196,51.481],[-0.22,51.488],[-0.225,51.504],[-0.214,51.521]],"Tower Hamlets":[[-0.073,51.531],[-0.04,51.53],[-0.01,51.519],[-0.005,51.505],[-0.02,51.497],[-0.053,51.501],[-0.073,51.509],[-0.073,51.531]],"Lambeth":[[-0.148,51.479],[-0.128,51.483],[-0.1,51.48],[-0.085,51.47],[-0.09,51.453],[-0.11,51.446],[-0.132,51.45],[-0.15,51.462],[-0.148,51.479]],"Southwark":[[-0.1,51.505],[-0.073,51.509],[-0.053,51.501],[-0.04,51.492],[-0.045,51.472],[-0.06,51.462],[-0.085,51.47],[-0.1,51.48],[-0.1,51.505]],"Islington":[[-0.121,51.519],[-0.112,51.555],[-0.09,51.56],[-0.073,51.553],[-0.073,51.531],[-0.09,51.525],[-0.121,51.519]],"Wandsworth":[[-0.22,51.488],[-0.196,51.481],[-0.173,51.478],[-0.155,51.47],[-0.148,51.46],[-0.15,51.44],[-0.175,51.432],[-0.2,51.44],[-0.215,51.455],[-0.22,51.488]],"Hammersmith and Fulham":[[-0.24,51.51],[-0.214,51.521],[-0.225,51.504],[-0.22,51.488],[-0.215,51.475],[-0.23,51.472],[-0.25,51.48],[-0.24,51.51]],"Hackney":[[-0.09,51.56],[-0.07,51.57],[-0.04,51.562],[-0.03,51.548],[-0.04,51.53],[-0.073,51.531],[-0.073,51.553],[-0.09,51.56]],"Brent":[[-0.31,51.57],[-0.28,51.58],[-0.24,51.575],[-0.21,51.56],[-0.195,51.545],[-0.21,51.535],[-0.24,51.53],[-0.28,51.54],[-0.31,51.555],[-0.31,51.57]],"Ealing":[[-0.36,51.54],[-0.33,51.545],[-0.31,51.535],[-0.28,51.52],[-0.27,51.505],[-0.28,51.49],[-0.31,51.49],[-0.35,51.5],[-0.37,51.52],[-0.36,51.54]],"Haringey":[[-0.143,51.564],[-0.13,51.6],[-0.095,51.61],[-0.065,51.6],[-0.07,51.57],[-0.09,51.56],[-0.112,51.555],[-0.143,51.564]],"Barnet":[[-0.28,51.58],[-0.25,51.62],[-0.21,51.64],[-0.17,51.64],[-0.15,51.62],[-0.13,51.6],[-0.143,51.564],[-0.171,51.557],[-0.21,51.56],[-0.24,51.575],[-0.28,51.58]],"Newham":[[-0.01,51.519],[-0.005,51.545],[0.02,51.548],[0.06,51.54],[0.06,51.52],[0.04,51.505],[0.01,51.5],[-0.01,51.519]],"Greenwich":[[-0.02,51.497],[0.01,51.5],[0.04,51.505],[0.06,51.5],[0.08,51.485],[0.06,51.465],[0.02,51.455],[-0.01,51.465],[-0.02,51.497]],"Lewisham":[[-0.06,51.462],[-0.045,51.472],[-0.02,51.478],[-0.01,51.465],[0.01,51.455],[0.0,51.435],[-0.025,51.43],[-0.05,51.44],[-0.06,51.462]],"Croydon":[[-0.132,51.4],[-0.11,51.41],[-0.07,51.405],[-0.04,51.395],[-0.035,51.355],[-0.06,51.34],[-0.1,51.345],[-0.14,51.37],[-0.132,51.4]],"Richmond upon Thames":[[-0.37,51.47],[-0.34,51.475],[-0.31,51.47],[-0.285,51.46],[-0.28,51.44],[-0.29,51.42],[-0.32,51.415],[-0.355,51.43],[-0.37,51.45],[-0.37,51.47]],"Waltham Forest":[[-0.04,51.562],[-0.02,51.6],[0.01,51.605],[0.03,51.59],[0.02,51.565],[-0.005,51.545],[-0.01,51.555],[-0.04,51.562]],"Hounslow":[[-0.37,51.5],[-0.35,51.5],[-0.31,51.49],[-0.28,51.49],[-0.27,51.475],[-0.285,51.46],[-0.31,51.47],[-0.34,51.475],[-0.37,51.47],[-0.39,51.485],[-0.37,51.5]],"Merton":[[-0.215,51.435],[-0.2,51.44],[-0.175,51.432],[-0.15,51.425],[-0.16,51.4],[-0.185,51.395],[-0.21,51.405],[-0.215,51.435]],"Harrow":[[-0.38,51.595],[-0.35,51.61],[-0.31,51.61],[-0.31,51.58],[-0.31,51.57],[-0.33,51.565],[-0.36,51.57],[-0.38,51.58],[-0.38,51.595]],"Hillingdon":[[-0.5,51.57],[-0.47,51.575],[-0.43,51.565],[-0.4,51.545],[-0.39,51.52],[-0.4,51.49],[-0.43,51.48],[-0.47,51.49],[-0.5,51.51],[-0.51,51.54],[-0.5,51.57]],"Bromley":[[-0.025,51.43],[0.0,51.435],[0.03,51.43],[0.06,51.415],[0.06,51.375],[0.03,51.345],[-0.01,51.345],[-0.035,51.355],[-0.04,51.395],[-0.025,51.43]],"Enfield":[[-0.13,51.6],[-0.095,51.61],[-0.065,51.64],[-0.04,51.665],[-0.01,51.66],[0.0,51.64],[-0.01,51.615],[-0.02,51.6],[-0.065,51.6],[-0.095,51.61],[-0.13,51.6]],"Redbridge":[[0.02,51.565],[0.03,51.59],[0.07,51.605],[0.1,51.59],[0.1,51.56],[0.07,51.545],[0.04,51.548],[0.02,51.548],[0.02,51.565]],"Kingston upon Thames":[[-0.32,51.415],[-0.29,51.42],[-0.27,51.415],[-0.265,51.395],[-0.28,51.375],[-0.31,51.37],[-0.335,51.385],[-0.34,51.4],[-0.32,51.415]],"City of London":[[-0.121,51.519],[-0.107,51.521],[-0.09,51.525],[-0.073,51.518],[-0.073,51.509],[-0.1,51.505],[-0.107,51.512],[-0.121,51.519]]};
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let state = {
+  hostFilter: 'all',        // 'all'|'individual'|'small'|'medium'|'professional'
+  selected: new Set(),       // selected borough names
+  hovered: null,             // hovered borough name
+};
+
+function getFilteredData() {
+  if (state.hostFilter === 'all') return DATA_ALL;
+  return DATA_ALL.map(d => {
+    const ht = HT_DATA[d.neighbourhood]?.[state.hostFilter];
+    if (!ht || ht.count === 0) return null;
+    return {
+      ...d,
+      count: ht.count,
+      median_price: ht.median_price,
+      pct_entire: ht.pct_entire,
+      pct_private: ht.pct_private,
+      pct_shared: Math.max(0, 100 - ht.pct_entire - ht.pct_private),
+    };
+  }).filter(Boolean);
+}
+
+// ══════════════════════════════════════════
+//  UPDATE LOOP
+// ══════════════════════════════════════════
+function updateAll() {
+  const data = getFilteredData();
+  updateStats(data);
+  renderMap(data);
+  renderBars(data);
+  renderScatter(data);
+  updateBanner();
+}
+
+function updateBanner() {
+  const banner = document.getElementById('selBanner');
+  const text = document.getElementById('selText');
+  if (state.selected.size > 0) {
+    banner.classList.add('visible');
+    const names = [...state.selected];
+    text.innerHTML = `Selected: <strong>${names.join(', ')}</strong>`;
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+function updateStats(data) {
+  const filtered = state.selected.size > 0 ? data.filter(d => state.selected.has(d.neighbourhood)) : data;
+  const totalCount = filtered.reduce((s,d) => s + d.count, 0);
+  const wPrice = filtered.reduce((s,d) => s + d.median_price * d.count, 0) / (totalCount||1);
+  const wEntire = filtered.reduce((s,d) => s + d.pct_entire * d.count, 0) / (totalCount||1);
+  const wHlc = filtered.reduce((s,d) => s + (d.avg_hlc||0) * d.count, 0) / (totalCount||1);
+  document.getElementById('st-count').textContent = totalCount.toLocaleString();
+  document.getElementById('st-price').textContent = `£${Math.round(wPrice)}`;
+  document.getElementById('st-entire').textContent = `${wEntire.toFixed(1)}%`;
+  document.getElementById('st-hlc').textContent = wHlc.toFixed(1);
+  document.getElementById('st-boroughs').textContent = filtered.length;
+}
+
+// ══════════════════════════════════════════
+//  MAP (Leaflet)
+// ══════════════════════════════════════════
+let leafletMap = null;
+let mapBoroughLayers = [];
+let mapBubbleLayers = [];
+
+function initMap() {
+  leafletMap = L.map('leafletMap', {
+    zoomControl: false,
+    attributionControl: false,
+    scrollWheelZoom: true,
+  }).setView([51.505, -0.12], 11);
+
+  // Dark tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 16, minZoom: 10,
+  }).addTo(leafletMap);
+
+  // Add zoom control to top-right
+  L.control.zoom({ position: 'topright' }).addTo(leafletMap);
+
+  // Attribution
+  L.control.attribution({ position: 'bottomright', prefix: false })
+    .addAttribution('© <a href="https://carto.com/">CARTO</a> © <a href="https://osm.org/">OSM</a>')
+    .addTo(leafletMap);
+
+  // Greater London outer boundary
+  const londonOutline = [[-0.51,51.54],[-0.5,51.51],[-0.47,51.49],[-0.43,51.48],[-0.4,51.49],[-0.39,51.485],[-0.37,51.47],[-0.355,51.43],[-0.34,51.4],[-0.335,51.385],[-0.31,51.37],[-0.28,51.375],[-0.265,51.395],[-0.185,51.395],[-0.16,51.4],[-0.14,51.37],[-0.1,51.345],[-0.06,51.34],[-0.035,51.355],[-0.01,51.345],[0.03,51.345],[0.06,51.375],[0.06,51.415],[0.08,51.485],[0.06,51.5],[0.06,51.52],[0.06,51.54],[0.1,51.56],[0.1,51.59],[0.07,51.605],[0.03,51.59],[0.01,51.605],[0.0,51.64],[-0.01,51.66],[-0.04,51.665],[-0.065,51.64],[-0.13,51.6],[-0.15,51.62],[-0.17,51.64],[-0.21,51.64],[-0.25,51.62],[-0.28,51.58],[-0.31,51.61],[-0.35,51.61],[-0.38,51.595],[-0.38,51.58],[-0.43,51.565],[-0.47,51.575],[-0.5,51.57],[-0.51,51.54]].map(([lng,lat]) => [lat,lng]);
+  L.polyline(londonOutline, {
+    color: '#ff5a5f',
+    weight: 1.8,
+    opacity: 0.35,
+    dashArray: '6,4',
+    fill: false,
+  }).addTo(leafletMap);
+
+  // "Greater London" label
+  L.marker([51.67, -0.04], {
+    icon: L.divIcon({
+      className: 'london-label',
+      html: 'Greater London',
+      iconSize: [120, 20],
+      iconAnchor: [60, 10],
+    })
+  }).addTo(leafletMap);
+}
+
+function priceColor(p, maxPrice, alpha=0.75) {
+  const t = Math.min(p / maxPrice, 1);
+  const r = Math.round(60 + t * 195);
+  const g = Math.round(160 - t * 100);
+  const b = Math.round(150 - t * 55);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function priceColorHex(p, maxPrice) {
+  const t = Math.min(p / maxPrice, 1);
+  const r = Math.round(60 + t * 195);
+  const g = Math.round(160 - t * 100);
+  const b = Math.round(150 - t * 55);
+  return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+function renderMap(data) {
+  if (!leafletMap) return;
+
+  // Clear old layers
+  mapBoroughLayers.forEach(l => leafletMap.removeLayer(l));
+  mapBubbleLayers.forEach(l => leafletMap.removeLayer(l));
+  mapBoroughLayers = [];
+  mapBubbleLayers = [];
+
+  const hasSel = state.selected.size > 0;
+  const maxCount = Math.max(...data.map(d => d.count));
+  const maxPrice = Math.max(...data.map(d => d.median_price));
+  const rScale = c => Math.sqrt(c / maxCount) * 22 + 4;
+  const dataNames = new Set(data.map(d => d.neighbourhood));
+
+  // Draw borough boundaries
+  for (const [name, coords] of Object.entries(BOROUGH_PATHS)) {
+    const isSel = state.selected.has(name);
+    const isHov = state.hovered === name;
+    const dimmed = hasSel && !isSel;
+    const latlngs = coords.map(([lng, lat]) => [lat, lng]);
+
+    const poly = L.polygon(latlngs, {
+      color: isSel ? '#ff5a5f' : (isHov ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)'),
+      weight: isSel ? 2.5 : (isHov ? 1.5 : 0.8),
+      fillColor: isSel ? '#ff5a5f' : '#ffffff',
+      fillOpacity: isSel ? 0.12 : (isHov ? 0.05 : (dimmed ? 0.01 : 0.02)),
+      className: 'borough-poly'
+    }).addTo(leafletMap);
+
+    mapBoroughLayers.push(poly);
+  }
+
+  // Draw bubbles (sorted: largest first so small ones render on top)
+  const sorted = [...data].sort((a,b) => b.count - a.count);
+  const tooltip = document.getElementById('mapTooltip');
+
+  sorted.forEach(d => {
+    const isSel = state.selected.has(d.neighbourhood);
+    const isHov = state.hovered === d.neighbourhood;
+    const dimmed = hasSel && !isSel;
+    const r = rScale(d.count);
+    const fillCol = dimmed ? '#50505a' : priceColorHex(d.median_price, maxPrice);
+    const fillOp = dimmed ? 0.25 : (isHov ? 0.9 : 0.7);
+
+    const circle = L.circleMarker([d.lat, d.lng], {
+      radius: r,
+      fillColor: fillCol,
+      fillOpacity: fillOp,
+      color: isSel ? '#ffffff' : (isHov ? 'rgba(255,255,255,0.6)' : 'transparent'),
+      weight: isSel ? 2.5 : (isHov ? 2 : 0),
+    }).addTo(leafletMap);
+
+    // Tooltip label for large bubbles
+    if ((!dimmed && d.count > 350) || isSel) {
+      const label = d.neighbourhood.replace(' and ', ' & ');
+      circle.bindTooltip(label, {
+        permanent: true, direction: 'top', offset: [0, -r-2],
+        className: 'bubble-label'
+      });
+    }
+
+    // Events
+    circle.on('mouseover', e => {
+      state.hovered = d.neighbourhood;
+      tooltip.style.display = 'block';
+      const mapRect = document.getElementById('mapContainer').getBoundingClientRect();
+      const pt = leafletMap.latLngToContainerPoint([d.lat, d.lng]);
+      tooltip.style.left = Math.min(pt.x + 18, mapRect.width - 220) + 'px';
+      tooltip.style.top = (pt.y - 10) + 'px';
+      tooltip.innerHTML = `<div class="tt-name">${d.neighbourhood}</div>
+        <div class="tt-row"><span>Listings</span><span class="tt-val">${d.count.toLocaleString()}</span></div>
+        <div class="tt-row"><span>Median price</span><span class="tt-val">£${d.median_price}</span></div>
+        <div class="tt-row"><span>Entire home</span><span class="tt-val">${d.pct_entire}%</span></div>
+        <div class="tt-row"><span>Avg host listings</span><span class="tt-val">${(d.avg_hlc||0).toFixed(1)}</span></div>`;
+      renderBars(getFilteredData());
+      renderScatter(getFilteredData());
+    });
+
+    circle.on('mouseout', () => {
+      state.hovered = null;
+      tooltip.style.display = 'none';
+      renderBars(getFilteredData());
+      renderScatter(getFilteredData());
+    });
+
+    circle.on('click', () => {
+      if (state.selected.has(d.neighbourhood)) state.selected.delete(d.neighbourhood);
+      else state.selected.add(d.neighbourhood);
+      updateAll();
+    });
+
+    mapBubbleLayers.push(circle);
+  });
+}
+
+// Init map once
+initMap();
+
+// ══════════════════════════════════════════
+//  BAR CHART
+// ══════════════════════════════════════════
+function renderBars(data) {
+  const container = document.getElementById('barChart');
+  const sorted = [...data].sort((a,b) => b.count - a.count).slice(0, 18);
+  const maxCount = Math.max(...sorted.map(d => d.count));
+  const hasSel = state.selected.size > 0;
+
+  container.innerHTML = sorted.map(d => {
+    const isSel = state.selected.has(d.neighbourhood);
+    const isHov = state.hovered === d.neighbourhood;
+    const dimmed = hasSel && !isSel;
+    const total = Math.max(d.count / maxCount * 100, 1);
+    const eW = d.pct_entire / 100 * total;
+    const pW = d.pct_private / 100 * total;
+    const sW = Math.max(0, total - eW - pW);
+    const cls = isSel ? 'selected' : (dimmed ? 'dimmed' : '');
+    const highlight = isHov && !isSel ? 'background:rgba(255,255,255,0.04)' : '';
+
+    return `<div class="bar-row ${cls}" style="${highlight}" data-n="${d.neighbourhood}" onclick="toggleBar('${d.neighbourhood.replace(/'/g,"\\'")}')" onmouseenter="hoverBar('${d.neighbourhood.replace(/'/g,"\\'")}',true)" onmouseleave="hoverBar('${d.neighbourhood.replace(/'/g,"\\'")}',false)">
+      <div class="bar-name" style="${isSel?'color:var(--accent);font-weight:700':''}">${d.neighbourhood}</div>
+      <div class="bar-track">
+        <div class="bar-fill-entire" style="width:${eW}%;background:${dimmed?'rgba(80,80,90,.3)':'var(--accent)'}"></div>
+        <div class="bar-fill-private" style="left:${eW}%;width:${pW}%;background:${dimmed?'rgba(80,80,90,.2)':'var(--accent2)'}"></div>
+        <div class="bar-fill-shared" style="left:${eW+pW}%;width:${sW}%;background:${dimmed?'rgba(80,80,90,.15)':'var(--gold)'}"></div>
+      </div>
+      <div class="bar-val" style="${isSel?'color:var(--text);font-weight:700':''}">${d.count}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleBar(name) {
+  if (state.selected.has(name)) state.selected.delete(name);
+  else state.selected.add(name);
+  updateAll();
+}
+function hoverBar(name, enter) {
+  state.hovered = enter ? name : null;
+  const data = getFilteredData();
+  renderMap(data);
+  renderBars(data);
+  renderScatter(data);
+}
+
+// ══════════════════════════════════════════
+//  SCATTER
+// ══════════════════════════════════════════
+let scatterPoints = [];
+function renderScatter(data) {
+  const canvas = document.getElementById('scatterCanvas');
+  const wrap = canvas.parentElement;
+  const rect = wrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { top:24, right:24, bottom:44, left:52 };
+
+  const xVals = data.map(d => d.avg_hlc || 0);
+  const yVals = data.map(d => d.median_price);
+  const xMax = Math.max(...xVals) * 1.12;
+  const yMax = Math.max(...yVals) * 1.12;
+  const sX = v => pad.left + v / xMax * (W - pad.left - pad.right);
+  const sY = v => H - pad.bottom - v / yMax * (H - pad.top - pad.bottom);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + i * (H - pad.top - pad.bottom) / 4;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+    ctx.fillStyle = '#6b6f7a'; ctx.font = "10px 'DM Sans'"; ctx.textAlign = 'right';
+    ctx.fillText(`£${Math.round(yMax - i * yMax / 4)}`, pad.left - 6, y + 3);
+  }
+  for (let i = 0; i <= 4; i++) {
+    const x = pad.left + i * (W - pad.left - pad.right) / 4;
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, H - pad.bottom); ctx.stroke();
+    ctx.fillStyle = '#6b6f7a'; ctx.textAlign = 'center';
+    ctx.fillText(Math.round(i * xMax / 4).toString(), x, H - pad.bottom + 16);
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#6b6f7a'; ctx.font = "11px 'DM Sans'"; ctx.textAlign = 'center';
+  ctx.fillText('Avg Host Listings Count', W / 2, H - 4);
+  ctx.save(); ctx.translate(12, H / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Median Price (£)', 0, 0); ctx.restore();
+
+  const maxCount = Math.max(...data.map(d => d.count));
+  const hasSel = state.selected.size > 0;
+  scatterPoints = [];
+
+  const sorted = [...data].sort((a,b) => b.count - a.count);
+  sorted.forEach(d => {
+    const x = sX(d.avg_hlc || 0), y = sY(d.median_price);
+    const r = Math.sqrt(d.count / maxCount) * 28 + 5;
+    const isSel = state.selected.has(d.neighbourhood);
+    const isHov = state.hovered === d.neighbourhood;
+    const dimmed = hasSel && !isSel;
+
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (dimmed) {
+      ctx.fillStyle = 'rgba(80,80,90,0.2)';
+    } else {
+      ctx.fillStyle = d.pct_entire > 70 ? `rgba(255,90,95,${isHov?0.9:0.6})` : `rgba(0,166,153,${isHov?0.9:0.6})`;
+    }
+    ctx.fill();
+
+    if (isSel) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+    } else if (isHov) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    if ((!dimmed && d.count > 350) || isSel || isHov) {
+      ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.15)' : '#e4e6eb';
+      ctx.font = `${isSel||isHov ? '600 10px' : '400 9px'} 'DM Sans'`;
+      ctx.textAlign = 'center';
+      ctx.fillText(d.neighbourhood.replace(' and ',' & '), x, y - r - 4);
+    }
+
+    scatterPoints.push({ x, y, r, ...d });
+  });
+}
+
+// Scatter hover
+const scatterCanvas = document.getElementById('scatterCanvas');
+scatterCanvas.addEventListener('mousemove', e => {
+  if (window._brushing) return;
+  const rect = scatterCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let found = null;
+  for (const p of scatterPoints) {
+    if (Math.hypot(mx - p.x, my - p.y) < p.r + 3) { found = p; break; }
+  }
+  const tip = document.getElementById('scatterTooltip');
+  if (found) {
+    state.hovered = found.neighbourhood;
+    tip.style.display = 'block';
+    const tx = Math.min(found.x + 18, scatterCanvas.clientWidth - 220);
+    tip.style.left = tx + 'px';
+    tip.style.top = (found.y - 10) + 'px';
+    tip.innerHTML = `<div class="tt-name">${found.neighbourhood}</div>
+      <div class="tt-row"><span>Listings</span><span class="tt-val">${found.count.toLocaleString()}</span></div>
+      <div class="tt-row"><span>Median price</span><span class="tt-val">£${found.median_price}</span></div>
+      <div class="tt-row"><span>Entire home</span><span class="tt-val">${found.pct_entire}%</span></div>
+      <div class="tt-row"><span>Avg host listings</span><span class="tt-val">${(found.avg_hlc||0).toFixed(1)}</span></div>`;
+  } else {
+    state.hovered = null;
+    tip.style.display = 'none';
+  }
+  const data = getFilteredData();
+  renderMap(data);
+  renderBars(data);
+  renderScatter(data);
+});
+
+scatterCanvas.addEventListener('mouseleave', () => {
+  if (window._brushing) return;
+  state.hovered = null;
+  document.getElementById('scatterTooltip').style.display = 'none';
+  const data = getFilteredData();
+  renderMap(data); renderBars(data); renderScatter(data);
+});
+
+// Scatter click (single point)
+scatterCanvas.addEventListener('click', e => {
+  if (window._brushed) { window._brushed = false; return; }
+  const rect = scatterCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let found = null;
+  for (const p of scatterPoints) {
+    if (Math.hypot(mx - p.x, my - p.y) < p.r + 3) { found = p; break; }
+  }
+  if (found) {
+    if (state.selected.has(found.neighbourhood)) state.selected.delete(found.neighbourhood);
+    else state.selected.add(found.neighbourhood);
+    updateAll();
+  }
+});
+
+// Scatter BRUSH
+let brushStart = null;
+window._brushing = false;
+window._brushed = false;
+scatterCanvas.addEventListener('mousedown', e => {
+  const rect = scatterCanvas.getBoundingClientRect();
+  brushStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  window._brushing = false;
+  window._brushed = false;
+});
+scatterCanvas.addEventListener('mousemove', e => {
+  if (!brushStart) return;
+  const rect = scatterCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  if (!window._brushing && Math.hypot(mx - brushStart.x, my - brushStart.y) > 8) {
+    window._brushing = true;
+  }
+  if (window._brushing) {
+    const br = document.getElementById('brushRect');
+    br.style.display = 'block';
+    br.style.left = Math.min(brushStart.x, mx) + 'px';
+    br.style.top = Math.min(brushStart.y, my) + 'px';
+    br.style.width = Math.abs(mx - brushStart.x) + 'px';
+    br.style.height = Math.abs(my - brushStart.y) + 'px';
+    document.getElementById('scatterTooltip').style.display = 'none';
+  }
+});
+window.addEventListener('mouseup', e => {
+  if (!brushStart) return;
+  if (window._brushing) {
+    const rect = scatterCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const bx1 = Math.min(brushStart.x, mx), bx2 = Math.max(brushStart.x, mx);
+    const by1 = Math.min(brushStart.y, my), by2 = Math.max(brushStart.y, my);
+    state.selected.clear();
+    for (const p of scatterPoints) {
+      if (p.x >= bx1 && p.x <= bx2 && p.y >= by1 && p.y <= by2) {
+        state.selected.add(p.neighbourhood);
+      }
+    }
+    window._brushed = true;
+    updateAll();
+  }
+  brushStart = null;
+  window._brushing = false;
+  document.getElementById('brushRect').style.display = 'none';
+});
+
+// ══════════════════════════════════════════
+//  HOST FILTER
+// ══════════════════════════════════════════
+document.querySelectorAll('#hostFilter .pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('#hostFilter .pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    state.hostFilter = pill.dataset.ht;
+    state.selected.clear();
+    updateAll();
+  });
+});
+
+// Reset
+document.getElementById('resetAll').addEventListener('click', () => {
+  state.selected.clear();
+  state.hovered = null;
+  state.hostFilter = 'all';
+  document.querySelectorAll('#hostFilter .pill').forEach(p => p.classList.remove('active'));
+  document.querySelector('#hostFilter .pill[data-ht="all"]').classList.add('active');
+  updateAll();
+});
+
+document.getElementById('selClear').addEventListener('click', () => {
+  state.selected.clear();
+  updateAll();
+});
+
+// Escape to deselect
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { state.selected.clear(); updateAll(); }
+});
+
+// ══════════════════════════════════════════
+//  NEW DATA
+// ══════════════════════════════════════════
+const PRICE_HIST = {"Entire home/apt":{"<50":29,"50-75":307,"75-100":791,"100-125":1049,"125-150":1051,"150-200":1447,"200-250":864,"250-300":490,"300-400":495,"400-500":198,"500-1K":195,"1K+":15},"Private room":{"<50":1061,"50-75":1219,"75-100":558,"100-125":168,"125-150":69,"150-200":55,"200-250":20,"250-300":5,"300-400":10,"400-500":2,"500-1K":1,"1K+":2}};
+const GAP_DATA = [{"neighbourhood":"Hounslow","individual":73,"pro":167,"gap_pct":128.8},{"neighbourhood":"Wandsworth","individual":101,"pro":188,"gap_pct":85.2},{"neighbourhood":"Newham","individual":107,"pro":167,"gap_pct":56.1},{"neighbourhood":"Greenwich","individual":102,"pro":159,"gap_pct":55.9},{"neighbourhood":"Lewisham","individual":80,"pro":124,"gap_pct":55.6},{"neighbourhood":"Tower Hamlets","individual":105,"pro":156,"gap_pct":48.6},{"neighbourhood":"Islington","individual":116,"pro":170,"gap_pct":46.6},{"neighbourhood":"Richmond upon Thames","individual":105,"pro":149,"gap_pct":41.9},{"neighbourhood":"Kingston upon Thames","individual":75,"pro":103,"gap_pct":38.0},{"neighbourhood":"Bromley","individual":83,"pro":109,"gap_pct":30.5},{"neighbourhood":"Hammersmith and Fulham","individual":138,"pro":167,"gap_pct":21.0},{"neighbourhood":"Southwark","individual":105,"pro":127,"gap_pct":20.9},{"neighbourhood":"Kensington and Chelsea","individual":159,"pro":191,"gap_pct":19.7},{"neighbourhood":"Westminster","individual":162,"pro":176,"gap_pct":8.3},{"neighbourhood":"Camden","individual":138,"pro":137,"gap_pct":-0.7},{"neighbourhood":"Hackney","individual":113,"pro":112,"gap_pct":-0.9},{"neighbourhood":"Ealing","individual":87,"pro":83,"gap_pct":-4.0},{"neighbourhood":"Lambeth","individual":113,"pro":87,"gap_pct":-23.0},{"neighbourhood":"Brent","individual":109,"pro":78,"gap_pct":-28.4},{"neighbourhood":"Harrow","individual":89,"pro":60,"gap_pct":-32.6}];
+const DEMAND_DATA = [{"neighbourhood":"Barnet","median_rpm":1.98,"median_price":101,"count":223},{"neighbourhood":"Brent","median_rpm":2.05,"median_price":97,"count":407},{"neighbourhood":"Bromley","median_rpm":1.82,"median_price":83,"count":76},{"neighbourhood":"Camden","median_rpm":2.21,"median_price":137,"count":847},{"neighbourhood":"City of London","median_rpm":2.14,"median_price":178,"count":54},{"neighbourhood":"Croydon","median_rpm":2.07,"median_price":73,"count":147},{"neighbourhood":"Ealing","median_rpm":1.97,"median_price":84,"count":251},{"neighbourhood":"Enfield","median_rpm":2.0,"median_price":67,"count":76},{"neighbourhood":"Greenwich","median_rpm":2.0,"median_price":106,"count":184},{"neighbourhood":"Hackney","median_rpm":1.77,"median_price":115,"count":453},{"neighbourhood":"Hammersmith and Fulham","median_rpm":2.0,"median_price":128,"count":470},{"neighbourhood":"Haringey","median_rpm":1.92,"median_price":86,"count":232},{"neighbourhood":"Harrow","median_rpm":1.79,"median_price":68,"count":98},{"neighbourhood":"Hillingdon","median_rpm":2.0,"median_price":63,"count":86},{"neighbourhood":"Hounslow","median_rpm":2.06,"median_price":75,"count":110},{"neighbourhood":"Islington","median_rpm":1.99,"median_price":127,"count":509},{"neighbourhood":"Kensington and Chelsea","median_rpm":1.91,"median_price":190,"count":845},{"neighbourhood":"Kingston upon Thames","median_rpm":1.96,"median_price":80,"count":68},{"neighbourhood":"Lambeth","median_rpm":2.4,"median_price":104,"count":584},{"neighbourhood":"Lewisham","median_rpm":1.74,"median_price":81,"count":173},{"neighbourhood":"Merton","median_rpm":1.72,"median_price":85,"count":101},{"neighbourhood":"Newham","median_rpm":1.95,"median_price":113,"count":222},{"neighbourhood":"Redbridge","median_rpm":1.61,"median_price":65,"count":71},{"neighbourhood":"Richmond upon Thames","median_rpm":1.76,"median_price":104,"count":146},{"neighbourhood":"Southwark","median_rpm":2.24,"median_price":104,"count":582},{"neighbourhood":"Tower Hamlets","median_rpm":2.0,"median_price":120,"count":654},{"neighbourhood":"Waltham Forest","median_rpm":1.68,"median_price":83,"count":136},{"neighbourhood":"Wandsworth","median_rpm":1.6,"median_price":113,"count":472},{"neighbourhood":"Westminster","median_rpm":2.18,"median_price":182,"count":1706}];
+
+// ══════════════════════════════════════════
+//  PRICE HISTOGRAM
+// ══════════════════════════════════════════
+function renderHistogram() {
+  const canvas = document.getElementById('histCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width+'px'; canvas.style.height = rect.height+'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {top:20, right:20, bottom:50, left:50};
+  const labels = Object.keys(PRICE_HIST['Entire home/apt']);
+  const n = labels.length;
+  const barW = (W - pad.left - pad.right) / n;
+  const maxVal = Math.max(...labels.map(l => Math.max(PRICE_HIST['Entire home/apt'][l], PRICE_HIST['Private room'][l])));
+  const sY = v => H - pad.bottom - (v / maxVal) * (H - pad.top - pad.bottom);
+
+  ctx.clearRect(0,0,W,H);
+
+  // Grid
+  for (let i=0;i<=4;i++) {
+    const y = pad.top + i*(H-pad.top-pad.bottom)/4;
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
+    ctx.fillStyle='#6b6f7a'; ctx.font="10px 'DM Sans'"; ctx.textAlign='right';
+    ctx.fillText(Math.round(maxVal - i*maxVal/4), pad.left-6, y+3);
+  }
+
+  // Bars
+  labels.forEach((l, i) => {
+    const x = pad.left + i * barW;
+    const eV = PRICE_HIST['Entire home/apt'][l];
+    const pV = PRICE_HIST['Private room'][l];
+    const bw = barW * 0.38;
+
+    // Entire home bar
+    const eH = (eV/maxVal)*(H-pad.top-pad.bottom);
+    ctx.fillStyle = 'rgba(255,90,95,0.75)';
+    ctx.fillRect(x + barW*0.08, H-pad.bottom-eH, bw, eH);
+
+    // Private room bar
+    const pH = (pV/maxVal)*(H-pad.top-pad.bottom);
+    ctx.fillStyle = 'rgba(0,166,153,0.75)';
+    ctx.fillRect(x + barW*0.52, H-pad.bottom-pH, bw, pH);
+
+    // Label
+    ctx.fillStyle = '#6b6f7a'; ctx.font = "9px 'DM Sans'"; ctx.textAlign = 'center';
+    ctx.save(); ctx.translate(x + barW/2, H - pad.bottom + 14); ctx.rotate(-0.4);
+    ctx.fillText('£'+l, 0, 0); ctx.restore();
+  });
+
+  // Axis labels
+  ctx.fillStyle='#6b6f7a'; ctx.font="11px 'DM Sans'"; ctx.textAlign='center';
+  ctx.fillText('Price per night', W/2, H-4);
+  ctx.save(); ctx.translate(12, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Number of listings', 0, 0); ctx.restore();
+}
+
+// ══════════════════════════════════════════
+//  PRICE GAP DIVERGING BAR
+// ══════════════════════════════════════════
+function renderGapChart() {
+  const container = document.getElementById('gapChart');
+  const maxGap = Math.max(...GAP_DATA.map(d => Math.abs(d.gap_pct)));
+
+  container.innerHTML = GAP_DATA.map(d => {
+    const isPositive = d.gap_pct >= 0;
+    const barPct = Math.abs(d.gap_pct) / maxGap * 45;
+    const color = isPositive ? 'var(--accent)' : 'var(--accent2)';
+    const isSel = state.selected.has(d.neighbourhood);
+    const hasSel = state.selected.size > 0;
+    const dimmed = hasSel && !isSel;
+    const opacity = dimmed ? '0.2' : '1';
+
+    return `<div style="display:grid;grid-template-columns:160px 1fr 70px;align-items:center;gap:8px;padding:2px 4px;border-radius:4px;opacity:${opacity};cursor:pointer;${isSel?'background:rgba(255,90,95,0.1)':''}" onclick="toggleBar('${d.neighbourhood.replace(/'/g,"\\'")}')">
+      <div style="font-size:.76rem;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;${isSel?'color:var(--accent);font-weight:700':''}">${d.neighbourhood}</div>
+      <div style="height:18px;position:relative">
+        <div style="position:absolute;left:50%;top:0;width:1px;height:100%;background:rgba(255,255,255,0.15)"></div>
+        ${isPositive
+          ? `<div style="position:absolute;left:50%;top:2px;height:14px;width:${barPct}%;background:${color};border-radius:0 3px 3px 0;opacity:0.8"></div>`
+          : `<div style="position:absolute;right:50%;top:2px;height:14px;width:${barPct}%;background:${color};border-radius:3px 0 0 3px;opacity:0.8"></div>`
+        }
+      </div>
+      <div style="font-size:.74rem;color:${isPositive?'var(--accent)':'var(--accent2)'};font-weight:600;${isSel?'':''}">
+        ${isPositive?'+':''}${d.gap_pct}%
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+//  PRICE VS DEMAND SCATTER
+// ══════════════════════════════════════════
+function renderDemand() {
+  const canvas = document.getElementById('demandCanvas');
+  const wrap = canvas.parentElement;
+  const rect = wrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width*dpr; canvas.height = rect.height*dpr;
+  canvas.style.width = rect.width+'px'; canvas.style.height = rect.height+'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {top:24, right:24, bottom:44, left:52};
+
+  const xMax = Math.max(...DEMAND_DATA.map(d=>d.median_price))*1.1;
+  const yMax = Math.max(...DEMAND_DATA.map(d=>d.median_rpm))*1.1;
+  const sX = v => pad.left + v/xMax*(W-pad.left-pad.right);
+  const sY = v => H-pad.bottom - v/yMax*(H-pad.top-pad.bottom);
+  const maxC = Math.max(...DEMAND_DATA.map(d=>d.count));
+
+  ctx.clearRect(0,0,W,H);
+
+  // Grid
+  for (let i=0;i<=4;i++) {
+    const y = pad.top+i*(H-pad.top-pad.bottom)/4;
+    ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
+    ctx.fillStyle='#6b6f7a'; ctx.font="10px 'DM Sans'"; ctx.textAlign='right';
+    ctx.fillText((yMax-i*yMax/4).toFixed(1), pad.left-6, y+3);
+  }
+  for (let i=0;i<=4;i++) {
+    const x = pad.left+i*(W-pad.left-pad.right)/4;
+    ctx.beginPath(); ctx.moveTo(x,pad.top); ctx.lineTo(x,H-pad.bottom); ctx.stroke();
+    ctx.fillStyle='#6b6f7a'; ctx.textAlign='center';
+    ctx.fillText('£'+Math.round(i*xMax/4), x, H-pad.bottom+16);
+  }
+
+  // Axis labels
+  ctx.fillStyle='#6b6f7a'; ctx.font="11px 'DM Sans'"; ctx.textAlign='center';
+  ctx.fillText('Median Price (£/night)', W/2, H-4);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Reviews per Month (demand proxy)', 0, 0); ctx.restore();
+
+  const hasSel = state.selected.size > 0;
+  const sorted = [...DEMAND_DATA].sort((a,b)=>b.count-a.count);
+
+  sorted.forEach(d => {
+    const x = sX(d.median_price), y = sY(d.median_rpm);
+    const r2 = Math.sqrt(d.count/maxC)*24+5;
+    const isSel = state.selected.has(d.neighbourhood);
+    const isHov = state.hovered === d.neighbourhood;
+    const dimmed = hasSel && !isSel;
+
+    ctx.beginPath(); ctx.arc(x,y,r2,0,Math.PI*2);
+    if (dimmed) {
+      ctx.fillStyle = 'rgba(80,80,90,0.2)';
+    } else {
+      // Color by demand: higher rpm = warmer
+      const t = (d.median_rpm - 1.5) / 1.0;
+      ctx.fillStyle = `rgba(${Math.round(200+55*t)},${Math.round(130-40*t)},${Math.round(50+60*(1-t))},${isHov?0.9:0.65})`;
+    }
+    ctx.fill();
+
+    if (isSel) { ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; ctx.stroke(); }
+    else if (isHov) { ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke(); }
+
+    if ((!dimmed && d.count > 400) || isSel || isHov) {
+      ctx.fillStyle = dimmed ? 'rgba(255,255,255,0.15)' : '#e4e6eb';
+      ctx.font = `${isSel||isHov?'600 10px':'400 9px'} 'DM Sans'`;
+      ctx.textAlign='center';
+      ctx.fillText(d.neighbourhood.replace(' and ',' & '), x, y-r2-4);
+    }
+  });
+
+  // Tooltip
+  const tip = document.getElementById('demandTooltip');
+  canvas.onmousemove = e => {
+    const cr = canvas.getBoundingClientRect();
+    const mx = e.clientX-cr.left, my = e.clientY-cr.top;
+    let found = null;
+    for (const d of sorted) {
+      const x = sX(d.median_price), y = sY(d.median_rpm);
+      const r2 = Math.sqrt(d.count/maxC)*24+5;
+      if (Math.hypot(mx-x, my-y) < r2+3) { found = {...d, _x:x, _y:y}; break; }
+    }
+    if (found) {
+      state.hovered = found.neighbourhood;
+      tip.style.display='block';
+      tip.style.left = Math.min(found._x+18, canvas.clientWidth-220)+'px';
+      tip.style.top = (found._y-10)+'px';
+      tip.innerHTML = `<div class="tt-name">${found.neighbourhood}</div>
+        <div class="tt-row"><span>Median price</span><span class="tt-val">£${found.median_price}</span></div>
+        <div class="tt-row"><span>Reviews/month</span><span class="tt-val">${found.median_rpm}</span></div>
+        <div class="tt-row"><span>Listings</span><span class="tt-val">${found.count}</span></div>`;
+      const data = getFilteredData(); renderMap(data); renderBars(data); renderScatter(data); renderGapChart(); renderDemand();
+    } else if (state.hovered) {
+      state.hovered = null; tip.style.display='none';
+      const data = getFilteredData(); renderMap(data); renderBars(data); renderScatter(data); renderGapChart(); renderDemand();
+    }
+  };
+  canvas.onmouseleave = () => {
+    state.hovered=null; tip.style.display='none';
+    const data = getFilteredData(); renderMap(data); renderBars(data); renderScatter(data); renderGapChart(); renderDemand();
+  };
+  canvas.onclick = e => {
+    const cr = canvas.getBoundingClientRect();
+    const mx = e.clientX-cr.left, my = e.clientY-cr.top;
+    for (const d of sorted) {
+      const x = sX(d.median_price), y = sY(d.median_rpm);
+      const r2 = Math.sqrt(d.count/maxC)*24+5;
+      if (Math.hypot(mx-x, my-y) < r2+3) {
+        if (state.selected.has(d.neighbourhood)) state.selected.delete(d.neighbourhood);
+        else state.selected.add(d.neighbourhood);
+        updateAll(); return;
+      }
+    }
+  };
+}
+
+// ══════════════════════════════════════════
+//  PATCH updateAll to include new charts
+// ══════════════════════════════════════════
+const _origUpdateAll = updateAll;
+updateAll = function() {
+  _origUpdateAll();
+  renderHistogram();
+  renderGapChart();
+  renderDemand();
+};
+
+// Resize
+window.addEventListener('resize', () => updateAll());
+
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+updateAll();
+</script>
+</body>
+</html>
